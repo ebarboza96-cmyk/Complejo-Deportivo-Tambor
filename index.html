@@ -136,13 +136,58 @@ function fmtDate(s){ const[y,m,d]=s.split("-"); const dt=new Date(y,m-1,d); cons
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function isPast(d){ return d < getToday(); }
 
-function loadData(){
+const BIN_ID = "69c70e22aa77b81da928ffe1";
+const BIN_KEY = "$2a$10$MTzGkFsu45b07iGi4Zm0u.5tJDkbU6LGtMAasLZ7pttj5O34xPQvS";
+const BIN_URL = "https://api.jsonbin.io/v3/b/" + BIN_ID;
+let syncing = false;
+let syncStatus = "";
+
+async function cloudLoad(){
+  try {
+    const r = await fetch(BIN_URL + "/latest", { headers:{"X-Master-Key":BIN_KEY} });
+    const j = await r.json();
+    if(j.record){
+      bookings = j.record.bookings || [];
+      adminPass = j.record.pass || "1234";
+      localStorage.setItem("canchas-bookings", JSON.stringify(bookings));
+      localStorage.setItem("canchas-pass", adminPass);
+      syncStatus = "✓";
+    }
+  } catch(e){ console.error("Cloud load error:",e); syncStatus = "⚠"; }
+}
+
+async function cloudSave(){
+  if(syncing) return;
+  syncing = true; syncStatus = "⏳";
+  try {
+    await fetch(BIN_URL, {
+      method:"PUT",
+      headers:{"Content-Type":"application/json","X-Master-Key":BIN_KEY},
+      body: JSON.stringify({ bookings, pass: adminPass })
+    });
+    syncStatus = "✓";
+  } catch(e){ console.error("Cloud save error:",e); syncStatus = "⚠"; }
+  syncing = false;
+}
+
+async function loadData(){
+  // Carga rápida desde caché local
   try{ const r=localStorage.getItem("canchas-bookings"); bookings=r?JSON.parse(r):[]; }catch{ bookings=[]; }
   try{ const r=localStorage.getItem("canchas-pass"); if(r) adminPass=r; }catch{}
   render();
+  // Luego sincroniza desde la nube
+  await cloudLoad();
+  render();
 }
-function saveBookings(){ try{localStorage.setItem("canchas-bookings",JSON.stringify(bookings));}catch(e){console.error(e);} }
-function savePass(){ try{localStorage.setItem("canchas-pass",adminPass);}catch(e){console.error(e);} }
+
+function saveBookings(){
+  try{localStorage.setItem("canchas-bookings",JSON.stringify(bookings));}catch(e){console.error(e);}
+  cloudSave().then(()=>render());
+}
+function savePass(){
+  try{localStorage.setItem("canchas-pass",adminPass);}catch(e){console.error(e);}
+  cloudSave().then(()=>render());
+}
 
 function guardPast(date, fn){
   if(isPast(date) && !pastUnlocked){
@@ -217,7 +262,10 @@ function render(){
         <h1>Complejo <span>Tambor</span></h1>
         <div class="sub">Control de Canchas</div>
       </div>
-      <button class="gear-btn" onclick="showSettings=true;render()">⚙️</button>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <button class="gear-btn" onclick="showSettings=true;render()">⚙️</button>
+        <span style="font-size:9px;color:${syncStatus==="✓"?"#27a84a":syncStatus==="⚠"?"#ef4444":"#d4a012"};font-weight:700">${syncStatus==="✓"?"Sync ✓":syncStatus==="⚠"?"Sin sync":"sync..."}</span>
+      </div>
     </div>`;
 
   // Tab content
