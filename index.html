@@ -277,7 +277,7 @@ function render(){
   // Bottom nav
   h += `<div class="bottom-nav"><div class="tab-bar">`;
   [["calendario","🗓️","Cancha"],["agenda","📅","Agenda"],["nueva","➕","Reservar"],["resumen","📊","Resumen"]].forEach(([id,ic,lb])=>{
-    h += `<button class="tab-btn ${tab===id?"active":""}" onclick="tab='${id}';editBk=null;prefill=null;render()">
+    h += `<button class="tab-btn ${tab===id?"active":""}" onclick="tab='${id}';editBk=null;prefill=null;formData=null;render()">
       <span style="font-size:14px">${ic}</span>${lb}
       ${id==="agenda"&&pendingCount>0?`<span class="badge">${pendingCount}</span>`:""}
     </button>`;
@@ -477,7 +477,8 @@ function renderAgenda(){
    BOOKING FORM
    ═══════════════════════════════════════════════ */
 function renderForm(){
-  const f = editBk || {date:selDate, court:prefill?.court||"fut6a", hour:prefill?.hour||18, client:"", amount:"", method:"Efectivo", paid:true, notes:""};
+  initFormData();
+  const f = formData;
   const conflict = hasConflict(f.date, f.hour, f.court, editBk?.id);
   let html = `<div style="font-size:18px;font-weight:800;margin-bottom:12px">${editBk?"✏️ Editar Reserva":"➕ Nueva Reserva"}</div>`;
 
@@ -500,8 +501,8 @@ function renderForm(){
 
   if(conflict) html += `<div style="padding:10px 14px;border-radius:10px;background:#ef444422;color:#ef4444;font-size:13px;font-weight:700;border:1px solid #ef444444;margin-bottom:14px">⚠️ Conflicto: ya hay reserva en este horario</div>`;
 
-  html += `<label class="lbl" style="margin-bottom:14px"><span>Cliente</span><input type="text" class="inp" value="${f.client||""}" oninput="formSet('client',this.value)" placeholder="Nombre del cliente"></label>`;
-  html += `<label class="lbl" style="margin-bottom:14px"><span>Monto (₡)</span><input type="number" class="inp mono" style="font-size:22px;font-weight:900" value="${f.amount||""}" oninput="formSet('amount',this.value)" placeholder="0"></label>`;
+  html += `<label class="lbl" style="margin-bottom:14px"><span>Cliente</span><input type="text" id="f-client" class="inp" value="${f.client||""}" oninput="formQuiet('client',this.value)" placeholder="Nombre del cliente"></label>`;
+  html += `<label class="lbl" style="margin-bottom:14px"><span>Monto (₡)</span><input type="number" id="f-amount" class="inp mono" style="font-size:22px;font-weight:900" value="${f.amount||""}" oninput="formQuiet('amount',this.value)" placeholder="0"></label>`;
 
   // Method
   html += `<div style="margin-bottom:14px"><span style="color:#7fa87a;font-size:12px;font-weight:600;display:block;margin-bottom:8px">Método de pago</span><div style="display:flex;gap:6px">`;
@@ -520,7 +521,7 @@ function renderForm(){
   });
   html += `</div>`;
 
-  html += `<label class="lbl" style="margin-bottom:14px"><span>Notas (opcional)</span><input type="text" class="inp" value="${f.notes||""}" oninput="formSet('notes',this.value)" placeholder="Observaciones..."></label>`;
+  html += `<label class="lbl" style="margin-bottom:14px"><span>Notas (opcional)</span><input type="text" id="f-notes" class="inp" value="${f.notes||""}" oninput="formQuiet('notes',this.value)" placeholder="Observaciones..."></label>`;
 
   // Buttons
   const dis = !f.amount || conflict;
@@ -531,28 +532,36 @@ function renderForm(){
   return html;
 }
 
-// Form state (stored in a hidden data attr or just re-read from DOM)
+// Form state
 let formData = null;
-function formSet(k,v){
+function initFormData(){
   if(!formData) formData = editBk ? {...editBk} : {date:selDate,court:prefill?.court||"fut6a",hour:prefill?.hour||18,client:"",amount:"",method:"Efectivo",paid:true,notes:""};
+}
+// For text/number inputs: update data WITHOUT re-rendering (no focus loss)
+function formQuiet(k,v){
+  initFormData();
   formData[k]=v;
-  // Re-render form keeping formData
+}
+// For buttons/selects: update data AND re-render
+function formSet(k,v){
+  initFormData();
+  formData[k]=v;
   const saved=formData;
-  editBk = editBk ? saved : null;
-  if(!editBk){ prefill=null; editBk=null; }
-  // Quick: just re-render
-  const bkp_edit=editBk;
+  const bkp=editBk;
   editBk=saved;
   render();
-  editBk=bkp_edit||null;
+  editBk=bkp||null;
   formData=saved;
 }
 
 function submitForm(){
-  if(!formData) return;
+  initFormData();
+  // Read latest text values from DOM
+  const cl=document.getElementById("f-client"); if(cl) formData.client=cl.value;
+  const am=document.getElementById("f-amount"); if(am) formData.amount=am.value;
+  const nt=document.getElementById("f-notes"); if(nt) formData.notes=nt.value;
   const f=formData;
   if(!f.amount) return;
-  // Guard past
   if(!guardPast(f.date, ()=>submitForm())) return;
   if(hasConflict(f.date,f.hour,f.court,editBk?.id)) return;
   const bk={...f, amount:Number(f.amount), id:editBk?.id||genId()};
