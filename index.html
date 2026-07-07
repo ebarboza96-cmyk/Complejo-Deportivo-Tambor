@@ -7,8 +7,34 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@700;800;900&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#0d1a0d; font-family:'DM Sans',sans-serif; color:#e8f0e8; min-height:100vh; }
-  .app { max-width:480px; margin:0 auto; padding:12px 12px 110px; }
+  body {
+    background:#0d1a0d; font-family:'DM Sans',sans-serif; color:#e8f0e8; min-height:100vh;
+    position:relative;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      /* Center circle */
+      radial-gradient(circle at 50% 50%, transparent 68px, #1d8a3e18 68px, #1d8a3e18 70px, transparent 70px),
+      /* Center line */
+      linear-gradient(to bottom, transparent 49.8%, #1d8a3e18 49.8%, #1d8a3e18 50.2%, transparent 50.2%),
+      /* Center dot */
+      radial-gradient(circle at 50% 50%, #1d8a3e22 4px, transparent 4px),
+      /* Top penalty area */
+      linear-gradient(to bottom, transparent 14%, #1d8a3e15 14%, #1d8a3e15 14.3%, transparent 14.3%),
+      linear-gradient(to right, transparent 20%, #1d8a3e15 20%, #1d8a3e15 20.3%, transparent 20.3%, transparent 79.7%, #1d8a3e15 79.7%, #1d8a3e15 80%, transparent 80%),
+      linear-gradient(to bottom, transparent 0%, #1d8a3e15 0%, #1d8a3e15 0.3%, transparent 0.3%, transparent 14%, #1d8a3e00 14%),
+      /* Bottom penalty area */
+      linear-gradient(to bottom, transparent 86%, #1d8a3e15 86%, #1d8a3e15 86.3%, transparent 86.3%),
+      linear-gradient(to right, transparent 20%, #1d8a3e15 20%, #1d8a3e15 20.3%, transparent 20.3%, transparent 79.7%, #1d8a3e15 79.7%, #1d8a3e15 80%, transparent 80%),
+      linear-gradient(to bottom, transparent 86%, #1d8a3e00 86%, transparent 99.7%, #1d8a3e15 99.7%, #1d8a3e15 100%),
+      /* Field border */
+      linear-gradient(to right, transparent 5%, #1d8a3e12 5%, #1d8a3e12 5.3%, transparent 5.3%, transparent 94.7%, #1d8a3e12 94.7%, #1d8a3e12 95%, transparent 95%),
+      linear-gradient(to bottom, #1d8a3e12 0.3%, transparent 0.3%, transparent 99.7%, #1d8a3e12 99.7%),
+      /* Grass texture stripes */
+      repeating-linear-gradient(to bottom, #0e1c0e 0px, #0e1c0e 40px, #0d1a0d 40px, #0d1a0d 80px);
+  }
+  .app { max-width:480px; margin:0 auto; padding:12px 12px 110px; position:relative; z-index:1; }
 
   /* Header */
   .header { display:flex; align-items:center; justify-content:center; gap:10px; padding:8px 0 16px; }
@@ -20,7 +46,7 @@
   /* Bottom nav */
   .bottom-nav { position:fixed; bottom:0; left:0; right:0; padding:10px 12px 14px; background:linear-gradient(transparent,#0d1a0d 30%); z-index:50; }
   .tab-bar { display:flex; gap:2px; background:#0d1a0d; padding:6px; border-radius:14px; max-width:420px; margin:0 auto; }
-  .tab-btn { flex:1; padding:9px 2px; border:none; border-radius:11px; font-family:inherit; font-size:11.5px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; transition:all .2s; }
+  .tab-btn { flex:1; padding:9px 1px; border:none; border-radius:11px; font-family:inherit; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:2px; transition:all .2s; }
   .tab-btn.active { background:linear-gradient(135deg,#1d8a3e,#27a84a); color:#fff; font-weight:800; box-shadow:0 2px 12px #1d8a3e55; }
   .tab-btn:not(.active) { background:transparent; color:#5a7a5a; font-weight:500; }
   .badge { background:#ef4444; color:#fff; font-size:9px; font-weight:800; border-radius:99px; min-width:16px; height:16px; display:inline-flex; align-items:center; justify-content:center; padding:0 4px; }
@@ -120,6 +146,8 @@ const METHODS = ["Efectivo","SINPE","Transferencia"];
 const MICONS = {"Efectivo":"💵","SINPE":"📱","Transferencia":"🏦"};
 
 let bookings = [];
+let fixedBookings = []; // {id,dayOfWeek,hour,court,client,amount,method}
+let showFixed = false;
 let tab = "calendario";
 let selDate = getToday();
 let editBk = null;
@@ -148,8 +176,10 @@ async function cloudLoad(){
     const j = await r.json();
     if(j.record){
       bookings = j.record.bookings || [];
+      fixedBookings = j.record.fixed || [];
       adminPass = j.record.pass || "1234";
       localStorage.setItem("canchas-bookings", JSON.stringify(bookings));
+      localStorage.setItem("canchas-fixed", JSON.stringify(fixedBookings));
       localStorage.setItem("canchas-pass", adminPass);
       syncStatus = "✓";
     }
@@ -163,7 +193,7 @@ async function cloudSave(){
     await fetch(BIN_URL, {
       method:"PUT",
       headers:{"Content-Type":"application/json","X-Master-Key":BIN_KEY},
-      body: JSON.stringify({ bookings, pass: adminPass })
+      body: JSON.stringify({ bookings, fixed: fixedBookings, pass: adminPass })
     });
     syncStatus = "✓";
   } catch(e){ console.error("Cloud save error:",e); syncStatus = "⚠"; }
@@ -171,17 +201,17 @@ async function cloudSave(){
 }
 
 async function loadData(){
-  // Carga rápida desde caché local
   try{ const r=localStorage.getItem("canchas-bookings"); bookings=r?JSON.parse(r):[]; }catch{ bookings=[]; }
+  try{ const r=localStorage.getItem("canchas-fixed"); fixedBookings=r?JSON.parse(r):[]; }catch{ fixedBookings=[]; }
   try{ const r=localStorage.getItem("canchas-pass"); if(r) adminPass=r; }catch{}
   render();
-  // Luego sincroniza desde la nube
   await cloudLoad();
   render();
 }
 
 function saveBookings(){
   try{localStorage.setItem("canchas-bookings",JSON.stringify(bookings));}catch(e){console.error(e);}
+  try{localStorage.setItem("canchas-fixed",JSON.stringify(fixedBookings));}catch(e){console.error(e);}
   cloudSave().then(()=>render());
 }
 function savePass(){
@@ -235,8 +265,16 @@ function bookSlot(hour,court){
 /* ═══════════════════════════════════════════════
    SLOT HELPERS
    ═══════════════════════════════════════════════ */
+function getFixedForDate(date){
+  const d=new Date(date+"T12:00:00");
+  const dow=d.getDay(); // 0=Dom,1=Lun...6=Sáb
+  return fixedBookings.filter(f=>f.dayOfWeek===dow).map(f=>({...f,date,paid:true,fixed:true}));
+}
+function getAllForDate(date){
+  return [...bookings.filter(b=>b.date===(date||selDate)), ...getFixedForDate(date||selDate)];
+}
 function getSlot(hour,courtId,date){
-  const db=bookings.filter(b=>b.date===(date||selDate));
+  const db=getAllForDate(date||selDate);
   const bk=db.find(b=>b.hour===hour&&b.court===courtId);
   if(bk) return {s:"booked",b:bk};
   if(courtId==="fut6a"||courtId==="fut6b"){ const f8=db.find(b=>b.hour===hour&&b.court==="fut8"); if(f8) return {s:"blocked",b:f8}; }
@@ -244,10 +282,15 @@ function getSlot(hour,courtId,date){
   return {s:"available",b:null};
 }
 function hasConflict(date,hour,court,excludeId){
-  const ex=bookings.filter(b=>b.date===date&&b.hour===hour&&b.id!==excludeId);
+  const ex=getAllForDate(date).filter(b=>b.hour===hour&&b.id!==excludeId);
   if(court==="fut8") return ex.some(b=>["fut6a","fut6b","fut8"].includes(b.court));
   return ex.some(b=>b.court===court||b.court==="fut8");
 }
+// Fixed booking CRUD
+const DAYS=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+function addFixed(f){ fixedBookings.push({...f,id:genId()}); saveBookings(); render(); }
+function removeFixed(id){ fixedBookings=fixedBookings.filter(f=>f.id!==id); saveBookings(); render(); }
+function removeAllFixed(){ fixedBookings=[]; saveBookings(); render(); }
 
 /* ═══════════════════════════════════════════════
    RENDER
@@ -272,11 +315,12 @@ function render(){
   if(tab==="calendario") h += renderCalendar();
   else if(tab==="agenda") h += renderAgenda();
   else if(tab==="nueva") h += renderForm();
+  else if(tab==="fijas") h += renderFixed();
   else if(tab==="resumen") h += renderSummary();
 
   // Bottom nav
   h += `<div class="bottom-nav"><div class="tab-bar">`;
-  [["calendario","🗓️","Cancha"],["agenda","📅","Agenda"],["nueva","➕","Reservar"],["resumen","📊","Resumen"]].forEach(([id,ic,lb])=>{
+  [["calendario","🗓️","Cancha"],["agenda","📅","Agenda"],["nueva","➕","Reservar"],["fijas","📌","Fijas"],["resumen","📊","Resumen"]].forEach(([id,ic,lb])=>{
     h += `<button class="tab-btn ${tab===id?"active":""}" onclick="tab='${id}';editBk=null;prefill=null;formData=null;render()">
       <span style="font-size:14px">${ic}</span>${lb}
       ${id==="agenda"&&pendingCount>0?`<span class="badge">${pendingCount}</span>`:""}
@@ -398,7 +442,7 @@ function renderCalendar(){
         const b=info.b;
         html += `<div class="cal-cell booked" style="background:${c.color}30;border-color:${c.color}88" onclick="expanded=expanded==='${key}'?null:'${key}';render()">
           <span class="client-name">${b.client||"—"}</span>
-          <span class="amount-sm" style="color:${b.paid?"#27a84a":"#ef4444"}">${b.paid?"✓":"⏳"} ₡${Number(b.amount).toLocaleString()}</span>
+          <span class="amount-sm" style="color:${b.paid?"#27a84a":"#ef4444"}">${b.fixed?"📌":""}${b.paid?"✓":"⏳"} ₡${Number(b.amount).toLocaleString()}</span>
         </div>`;
       } else {
         html += `<div class="cal-cell blocked"><span style="font-size:10px;color:#6b4a2a">🔒</span></div>`;
@@ -567,6 +611,91 @@ function submitForm(){
   const bk={...f, amount:Number(f.amount), id:editBk?.id||genId()};
   if(editBk?.id) updateBooking(bk); else addBooking(bk);
   formData=null;
+}
+
+/* ═══════════════════════════════════════════════
+   FIXED BOOKINGS VIEW
+   ═══════════════════════════════════════════════ */
+let fixedForm = {dayOfWeek:1, hour:18, court:"fut6a", client:"", amount:"", method:"Efectivo"};
+function fixedSet(k,v){ fixedForm[k]=v; render(); }
+
+function renderFixed(){
+  let html = `<div style="font-size:18px;font-weight:800;margin-bottom:14px">📌 Canchas Fijas</div>`;
+  html += `<div style="font-size:12px;color:#7fa87a;margin-bottom:16px">Reservas que se repiten todas las semanas automáticamente</div>`;
+
+  // List existing
+  if(fixedBookings.length > 0){
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:700;color:#a3d9a5">${fixedBookings.length} fija${fixedBookings.length>1?"s":""} activa${fixedBookings.length>1?"s":""}</div>
+      <button class="sm-btn" style="background:#ef444418;color:#ef4444" onclick="if(confirm('¿Eliminar TODAS las canchas fijas?'))removeAllFixed()">🗑️ Borrar todas</button>
+    </div>`;
+    fixedBookings.forEach(f=>{
+      const ct=COURTS.find(c=>c.id===f.court);
+      const hl=HOURS.find(h=>h.v===f.hour)?.l||f.hour;
+      html += `<div class="card" style="border-left:4px solid ${ct?.color||"#444"};margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:14px;font-weight:800;margin-bottom:4px">${f.client||"Sin nombre"}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11px">
+            <span style="background:${ct.color}22;color:${ct.color};font-weight:700;padding:2px 8px;border-radius:6px">${ct.icon} ${ct.name}</span>
+            <span style="color:#e87b1c;font-weight:700">${DAYS[f.dayOfWeek]}</span>
+            <span style="color:#7fa87a">${hl}</span>
+            ${f.amount?`<span class="mono orange" style="font-weight:800">₡${Number(f.amount).toLocaleString()}</span>`:""}
+          </div>
+        </div>
+        <button class="sm-btn" style="background:#ef444418;color:#ef4444;font-size:16px;padding:8px 12px" onclick="removeFixed('${f.id}')">✕</button>
+      </div>`;
+    });
+    html += `<div style="height:20px"></div>`;
+  } else {
+    html += `<div style="text-align:center;padding:30px 20px;color:#5a7a5a;font-size:14px;margin-bottom:16px">
+      <div style="font-size:40px;margin-bottom:12px">📌</div>No hay canchas fijas configuradas</div>`;
+  }
+
+  // Add new form
+  html += `<div style="font-size:15px;font-weight:800;margin-bottom:12px;color:#e8f0e8">Agregar nueva fija</div>`;
+
+  // Day of week
+  html += `<div style="margin-bottom:14px"><span style="color:#7fa87a;font-size:12px;font-weight:600;display:block;margin-bottom:8px">Día de la semana</span>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">`;
+  DAYS.forEach((d,i)=>{
+    const sel=fixedForm.dayOfWeek===i;
+    html += `<button style="flex:1;min-width:42px;padding:8px 2px;border-radius:8px;border:2px solid ${sel?"#e87b1c":"#2d4a2d"};background:${sel?"#e87b1c22":"#152015"};color:${sel?"#e87b1c":"#5a7a5a"};font-weight:700;font-size:11px;cursor:pointer;font-family:inherit" onclick="fixedSet('dayOfWeek',${i})">${d}</button>`;
+  });
+  html += `</div></div>`;
+
+  // Court
+  html += `<div style="margin-bottom:14px"><span style="color:#7fa87a;font-size:12px;font-weight:600;display:block;margin-bottom:8px">Cancha</span><div style="display:flex;gap:6px">`;
+  COURTS.forEach(c=>{
+    const sel=fixedForm.court===c.id;
+    html += `<button class="court-btn" style="${sel?`border-color:${c.color};background:${c.color}22;color:${c.color}`:""}" onclick="fixedSet('court','${c.id}')"><span style="font-size:20px">${c.icon}</span>${c.name}</button>`;
+  });
+  html += `</div></div>`;
+
+  // Hour
+  html += `<label class="lbl" style="margin-bottom:14px"><span>Hora</span>
+    <select class="inp" onchange="fixedSet('hour',Number(this.value))">`;
+  HOURS.forEach(h=>{ html += `<option value="${h.v}" ${fixedForm.hour===h.v?"selected":""}>${h.l}</option>`; });
+  html += `</select></label>`;
+
+  // Client
+  html += `<label class="lbl" style="margin-bottom:14px"><span>Cliente</span>
+    <input type="text" id="fx-client" class="inp" value="${fixedForm.client||""}" oninput="fixedForm.client=this.value" placeholder="Nombre del cliente"></label>`;
+
+  // Amount
+  html += `<label class="lbl" style="margin-bottom:14px"><span>Monto (₡)</span>
+    <input type="number" id="fx-amount" class="inp mono" style="font-size:22px;font-weight:900" value="${fixedForm.amount||""}" oninput="fixedForm.amount=this.value" placeholder="0"></label>`;
+
+  // Submit
+  html += `<button onclick="submitFixed()" style="width:100%;padding:16px;border-radius:14px;background:linear-gradient(135deg,#e87b1c,#d4a012);color:#fff;font-weight:900;font-size:16px;border:none;cursor:pointer;font-family:inherit;box-shadow:0 4px 20px #e87b1c44">📌 Agregar Cancha Fija</button>`;
+
+  return html;
+}
+
+function submitFixed(){
+  const cl=document.getElementById("fx-client"); if(cl) fixedForm.client=cl.value;
+  const am=document.getElementById("fx-amount"); if(am) fixedForm.amount=am.value;
+  addFixed({...fixedForm});
+  fixedForm={dayOfWeek:fixedForm.dayOfWeek, hour:fixedForm.hour+1>23?18:fixedForm.hour+1, court:fixedForm.court, client:"", amount:"", method:"Efectivo"};
 }
 
 /* ═══════════════════════════════════════════════
