@@ -241,6 +241,7 @@ function updateBooking(bk){
 function deleteBooking(id){
   const bk=bookings.find(b=>b.id===id);
   if(bk && !guardPast(bk.date, ()=>deleteBooking(id))) return;
+  if(!confirm(`¿Cancelar la reserva de ${bk?.client||"este horario"}? Esta acción no se puede deshacer.`)) return;
   bookings=bookings.filter(b=>b.id!==id); saveBookings(); render();
 }
 function togglePaid(id){
@@ -460,6 +461,7 @@ function renderCalendar(){
           <div style="display:flex;gap:6px;margin-top:8px">
             <button class="sm-btn" style="background:#10b98118;color:#10b981" onclick="startEdit(bookings.find(x=>x.id==='${b.id}'))">Editar</button>
             <button class="sm-btn" style="background:${b.paid?"#ef444418":"#10b98114"};color:${b.paid?"#ef4444":"#34d399"}" onclick="togglePaid('${b.id}')">${b.paid?"Pendiente":"Pagado"}</button>
+            <button class="sm-btn" style="background:#ef444418;color:#ef4444;margin-left:auto" onclick="deleteBooking('${b.id}')">✕ Cancelar</button>
           </div>
         </div>`;
       }
@@ -498,7 +500,7 @@ function renderAgenda(){
         <div style="display:flex;gap:6px;margin-top:4px">
           <button class="sm-btn" style="background:${b.paid?"#ef444418":"#10b98114"};color:${b.paid?"#ef4444":"#34d399"}" onclick="togglePaid('${b.id}')">${b.paid?"Marcar pendiente":"Marcar pagado"}</button>
           <button class="sm-btn" style="background:#10b98118;color:#10b981" onclick="startEdit(bookings.find(x=>x.id==='${b.id}'))">Editar</button>
-          <button class="sm-btn" style="background:#ef444418;color:#ef4444" onclick="deleteBooking('${b.id}')">✕</button>
+          <button class="sm-btn" style="background:#ef444418;color:#ef4444;margin-left:auto" onclick="deleteBooking('${b.id}')">✕ Cancelar</button>
         </div>
       </div>`;
     });
