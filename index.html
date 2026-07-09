@@ -545,7 +545,8 @@ function renderForm(){
 
   if(conflict) html += `<div style="padding:10px 14px;border-radius:10px;background:#ef444422;color:#ef4444;font-size:13px;font-weight:700;border:1px solid #ef444444;margin-bottom:14px">⚠️ Conflicto: ya hay reserva en este horario</div>`;
 
-  html += `<label class="lbl" style="margin-bottom:14px"><span>Cliente</span><input type="text" id="f-client" class="inp" value="${f.client||""}" oninput="formQuiet('client',this.value)" placeholder="Nombre del cliente"></label>`;
+  html += `<label class="lbl" style="margin-bottom:8px"><span>Cliente</span><input type="text" id="f-client" class="inp" autocomplete="off" value="${f.client||""}" oninput="onClientInput(this.value)" placeholder="Nombre del cliente"></label>`;
+  html += `<div id="client-suggest" style="display:none;background:#141418;border:1px solid #26262d;border-radius:11px;overflow:hidden;margin-bottom:14px"></div>`;
   html += `<label class="lbl" style="margin-bottom:14px"><span>Teléfono (opcional)</span><input type="tel" id="f-phone" class="inp" value="${f.phone||""}" oninput="formQuiet('phone',this.value)" placeholder="8888-8888"></label>`;
   html += `<label class="lbl" style="margin-bottom:14px"><span>Monto (₡)</span><input type="number" id="f-amount" class="inp mono" style="font-size:22px;font-weight:900" value="${f.amount||""}" oninput="formQuiet('amount',this.value)" placeholder="0"></label>`;
 
@@ -727,6 +728,32 @@ function waNumber(phone){ let d=(phone||"").replace(/\D/g,""); if(d.length===8) 
 function waContact(i){ const c=contactsCache[i]; if(!c||!c.phone) return; window.open("https://wa.me/"+waNumber(c.phone),"_blank"); }
 function reservarContacto(i){ const c=contactsCache[i]; if(!c) return; prefill={client:c.name,phone:c.phone}; formData=null; editBk=null; tab="nueva"; render(); }
 
+let suggestCache=[];
+function onClientInput(val){
+  formQuiet('client', val);
+  const box=document.getElementById('client-suggest');
+  if(!box) return;
+  const q=(val||'').trim().toLowerCase();
+  const qd=(val||'').replace(/\D/g,'');
+  if(!q){ box.style.display='none'; box.innerHTML=''; return; }
+  const list=buildContacts().filter(c=>{
+    const n=(c.name||'').toLowerCase();
+    const p=(c.phone||'').replace(/\D/g,'');
+    return n.includes(q) || (qd.length>=2 && p.includes(qd));
+  }).slice(0,6);
+  suggestCache=list;
+  if(list.length===0){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='block';
+  box.innerHTML=list.map((c,i)=>`<div onclick="pickContact(${i})" style="padding:10px 12px;border-bottom:1px solid #26262d;cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:center"><span style="font-weight:700;color:#f4f4f5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name||'Sin nombre'}</span><span class="mono" style="color:#a1a1aa;font-size:12px;flex-shrink:0">${c.phone||''}</span></div>`).join('');
+}
+function pickContact(i){
+  const c=suggestCache[i]; if(!c) return;
+  formQuiet('client', c.name||'');
+  formQuiet('phone', c.phone||'');
+  const box=document.getElementById('client-suggest'); if(box){ box.style.display='none'; box.innerHTML=''; }
+  render();
+}
+
 function renderContacts(){
   contactsCache=buildContacts();
   let html=`<div style="font-size:18px;font-weight:800;margin-bottom:6px">👥 Contactos</div>`;
@@ -737,26 +764,9 @@ function renderContacts(){
   }
   html+=`<div style="font-size:12px;font-weight:700;color:#e4e4e7;margin-bottom:10px">${contactsCache.length} contacto${contactsCache.length>1?"s":""}</div>`;
   contactsCache.forEach((c,i)=>{
-    const fdate=c.last?fmtDate(c.last):"—";
-    html+=`<div class="card" style="margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div style="min-width:0">
-          <div style="font-size:15px;font-weight:800;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name||"Sin nombre"}</div>
-          <div style="font-size:12px;color:#a1a1aa;font-weight:600">${c.phone?("📞 "+c.phone):"Sin teléfono"}</div>
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div class="mono" style="font-size:16px;font-weight:900;color:#34d399">₡${c.total.toLocaleString()}</div>
-          <div style="font-size:11px;color:#71717a;font-weight:600">${c.count} reserva${c.count>1?"s":""}</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:11px">
-        <span class="status-badge" style="background:#212127;color:#a1a1aa;border:1px solid #2e2e36">Última: ${fdate}</span>
-        ${c.pending>0?`<span class="status-badge" style="background:#ef444422;color:#ef4444;border:1px solid #ef444433">Debe ₡${c.pending.toLocaleString()}</span>`:`<span class="status-badge" style="background:#10b98122;color:#34d399;border:1px solid #34d39933">Al día</span>`}
-      </div>
-      <div style="display:flex;gap:6px;margin-top:10px">
-        ${c.phone?`<button class="sm-btn" style="background:#10b98118;color:#34d399" onclick="waContact(${i})">💬 WhatsApp</button>`:""}
-        <button class="sm-btn" style="background:#10b98118;color:#10b981" onclick="reservarContacto(${i})">➕ Reservar</button>
-      </div>
+    html+=`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <div style="font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name||"Sin nombre"}</div>
+      <div class="mono" style="font-size:13px;color:#a1a1aa;font-weight:600;flex-shrink:0;white-space:nowrap">${c.phone||"—"}</div>
     </div>`;
   });
   return html;
