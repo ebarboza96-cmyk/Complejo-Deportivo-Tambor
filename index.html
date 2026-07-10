@@ -195,12 +195,33 @@ async function cloudSave(){
   syncing = false;
 }
 
+function migratePhones(){
+  let changed=false;
+  bookings.forEach(b=>{
+    if((!b.phone||!b.phone.trim()) && b.notes){
+      const runs=(b.notes.match(/\d[\d\s-]{5,}\d/g)||[]).map(x=>x.replace(/\D/g,""));
+      let d=null;
+      for(const x of runs){
+        if(x.length===8 && /^[6-8]/.test(x)){ d=x; break; }
+        if(x.length===11 && x.slice(0,3)==="506" && /^[6-8]/.test(x.slice(3))){ d=x.slice(3); break; }
+      }
+      if(d){
+        b.phone=d.slice(0,4)+"-"+d.slice(4);
+        if(!/[a-zA-Z]/.test(b.notes)) b.notes="";
+        changed=true;
+      }
+    }
+  });
+  return changed;
+}
+
 async function loadData(){
   try{ const r=localStorage.getItem("canchas-bookings"); bookings=r?JSON.parse(r):[]; }catch{ bookings=[]; }
   try{ const r=localStorage.getItem("canchas-fixed"); fixedBookings=r?JSON.parse(r):[]; }catch{ fixedBookings=[]; }
   try{ const r=localStorage.getItem("canchas-pass"); if(r) adminPass=r; }catch{}
   render();
   await cloudLoad();
+  if(migratePhones()) saveBookings();
   render();
 }
 
